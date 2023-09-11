@@ -37,7 +37,7 @@ In the future, I plan to add sensors to dynamically alter the light schedule bas
    ```
 2. Navigate to the project directory
    ```bash
-   cd 4WayTrafficLightSimulator
+   cd traffic-light-sim
    ```
 3. Install the RPi.GPIO library if you haven't
    ```bash
@@ -50,7 +50,7 @@ In the future, I plan to add sensors to dynamically alter the light schedule bas
 2. Use resistors to limit the current going into the LEDs.
 3. Make sure to connect the ground (GND) correctly.
 
-Refer to the `hardware_diagram.JPG` for a complete setup diagram.
+Refer to the [`hardware_diagram.JPG`](https://github.com/ZRay07/traffic-light-sim/blob/main/hardware_diagram.JPG) for a complete setup diagram.
 
 ## Usage
 
