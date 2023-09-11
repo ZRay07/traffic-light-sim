@@ -27,13 +27,13 @@ In the future, I plan to add sensors to dynamically alter the light schedule bas
 - LEDs (Red, Yellow, Green)
 - Jumper wires
 - Breadboard
-- Resistors
+- Resistors (220 ohms)
 
 ## Installation and Setup
 
 1. Clone this repository into your Raspberry Pi
    ```bash
-   git clone https://github.com/ZRay07/4WayTrafficLightSimulator.git
+   git clone https://github.com/ZRay07/traffic-light-sim.git
    ```
 2. Navigate to the project directory
    ```bash
