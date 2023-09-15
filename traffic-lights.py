@@ -1,119 +1,131 @@
-#######
-# This file is meant to simulate a 4-way intersection with traffic lights
-#
-#
-#
-#######
+"""
+This file simulates traffic lights at a 4-way intersection using a Raspberry Pi.
 
+The Raspberry Pi's GPIO pins are used to control the LEDs that represent traffic lights.
+
+TO-DO: [BELOW] ADD INPUT SENSORS TO SYSTEM
+If no input to the system, the lights operate on a pre-defined schedule
+    Buttons on the south side and the east side allow for the system to simulate a "car" being there
+If there is a car at one of the sides, the lights will switch and allow the cars to pass for
+    as long as the button is pressed down
+"""
 from time import sleep
+from threading import Thread
 
 import RPi.GPIO as GPIO
 
+GPIO.setwarnings(False)
 
-# BOARD mode simply means using pins numbered 1-40 as compared to
-# 	BCM where you are using channel numbers on the Broadcom SOC
+# Use the BOARD numbering system for GPIO pins
 GPIO.setmode(GPIO.BOARD)
 
-# Set the pins which will correspond to the traffic lights
-output_leds = [3, 5, 7, 8, 10, 12, 19, 21, 23, 22, 24, 26]
-GPIO.setup(output_leds, GPIO.OUT)
+# Dictionary to hold the mapping of (direction and color) to GPIO pins
+OUTPUT_PIN_MAP = {
+    "north_green"  : 3,
+    "north_yellow" : 5,
+    "north_red"    : 7,
 
-def green_east_and_west():
-    GPIO.output(22, True)
-    GPIO.output(24, False)
-    GPIO.output(26, False)
+    "south_green"  : 8,
+    "south_yellow" : 10,
+    "south_red"    : 12,
 
-    GPIO.output(19, True)
-    GPIO.output(21, False)
-    GPIO.output(23, False)
+    "east_green"   : 19,
+    "east_yellow"  : 21,
+    "east_red"     : 23,
+
+    "west_green"   : 22,
+    "west_yellow"  : 24,
+    "west_red"     : 26,
+
+    "ns_LED"       : 37,
+    "ew_LED"       : 35
+}
+
+# Dictionary to hold the mapping of (direction and sensor) to GPIO pins
+INP_PIN_MAP = {
+    "ns_btn" : 40,
+    "ew_btn" : 38
+}
+
+# Initialize the GPIO pins
+GPIO.setup(list(OUTPUT_PIN_MAP.values()), GPIO.OUT)
+GPIO.setup(list(INP_PIN_MAP.values()), GPIO.IN)
+
+# Set constants for light delays
+GREEN_DELAY = 5
+YELLOW_DELAY = 3
+RED_DELAY = 1.75
 
 
-def yellow_east_and_west():
-    GPIO.output(22, False)
-    GPIO.output(24, True)
-    GPIO.output(26, False)
 
-    GPIO.output(19, False)
-    GPIO.output(21, True)
-    GPIO.output(23, False)
+def set_traffic_light(direction, color):
+    """
+    Set the traffic light for a given direction to a specific color.
 
+    Parameters:
+	direction (str): Corresponding side. Either {north, south, east, or west}.
+	color (str): Color of light. Either {green, yellow, or red}.
+    """
+    # Turn off all the lights for the given direction
+    for c in ["green", "yellow", "red"]:
+        GPIO.output(OUTPUT_PIN_MAP[f"{direction}_{c}"], False)
 
-
-def red_east_and_west():
-    GPIO.output(22, False)
-    GPIO.output(24, False)
-    GPIO.output(26, True)
-
-    GPIO.output(19, False)
-    GPIO.output(21, False)
-    GPIO.output(23, True)
+    # Turn on the specified light
+    GPIO.output(OUTPUT_PIN_MAP[f"{direction}_{color}"], True)
 
 
-def green_north_and_south():
-    GPIO.output(8, True)
-    GPIO.output(10, False)
-    GPIO.output(12, False)
-
-    GPIO.output(3, True)
-    GPIO.output(5, False)
-    GPIO.output(7, False)
-
-def yellow_north_and_south():
-    GPIO.output(8, False)
-    GPIO.output(10, True)
-    GPIO.output(12, False)
-
-    GPIO.output(3, False)
-    GPIO.output(5, True)
-    GPIO.output(7, False)
-
-def red_north_and_south():
-    GPIO.output(8, False)
-    GPIO.output(10, False)
-    GPIO.output(12, True)
-
-    GPIO.output(3, False)
-    GPIO.output(5, False)
-    GPIO.output(7, True)
+def listen_for_ns_car():
+    if not GPIO.input(INP_PIN_MAP["ns_btn"]):
+        GPIO.output(INP_PIN_MAP["ns_LED"], True)
 
 def main():
 
+    ns_thread = Thread(target=listen_for_ns_car)
+    ns_thread.run()
+
     try:
         while True:
-
         ########
         # At the start of the intersection simulation,
 	# the East and West sides will have green lights.
 	# and the North and South sides will have red lights.
 	########
+            set_traffic_light("east", "green")
+            set_traffic_light("west", "green")
+            set_traffic_light("north", "red")
+            set_traffic_light("south", "red")
 
-            red_north_and_south()
-            green_east_and_west()
+            sleep(GREEN_DELAY)
 
-            sleep(5)
+            set_traffic_light("east", "yellow")
+            set_traffic_light("west", "yellow")
 
-            yellow_east_and_west()
+            sleep(YELLOW_DELAY)
 
-            sleep(3)
+            set_traffic_light("east", "red")
+            set_traffic_light("west", "red")
 
-            red_east_and_west()
+            sleep(RED_DELAY)
 
-            sleep(1.75)
+            set_traffic_light("east", "red")
+            set_traffic_light("west", "red")
+            set_traffic_light("north", "green")
+            set_traffic_light("south", "green")
 
-            green_north_and_south()
+            sleep(GREEN_DELAY)
 
-            sleep(5)
+            set_traffic_light("north", "yellow")
+            set_traffic_light("south", "yellow")
 
-            yellow_north_and_south()
+            sleep(YELLOW_DELAY)
 
-            sleep(3)
+            set_traffic_light("north", "red")
+            set_traffic_light("south", "red")
 
-            red_north_and_south()
-
-            sleep(1.75)
+            sleep(RED_DELAY)
 
     except KeyboardInterrupt:
-        GPIO.output(output_leds, False)
+        GPIO.output(list(OUTPUT_PIN_MAP.values()), False)
 
 if __name__ == "__main__":
     main()
