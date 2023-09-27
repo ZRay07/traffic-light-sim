@@ -1,119 +1,271 @@
-#######
-# This file is meant to simulate a 4-way intersection with traffic lights
-#
-#
-#
-#######
+"""
+This file simulates traffic lights at a 4-way intersection using a Raspberry Pi.
 
+The Raspberry Pi's GPIO pins are used to control the LEDs that represent traffic lights.
+
+TO-DO: [BELOW] ADD INPUT SENSORS TO SYSTEM
+If no input to the system, the lights operate on a pre-defined schedule
+    Buttons on the south side and the east side allow for the system to simulate a "car" being there
+If there is a car at one of the sides, the lights will switch and allow the cars to pass for
+    as long as the button is pressed down
+"""
 from time import sleep
+from threading import Thread
+import argparse
 
 import RPi.GPIO as GPIO
 
 
-# BOARD mode simply means using pins numbered 1-40 as compared to
-# 	BCM where you are using channel numbers on the Broadcom SOC
-GPIO.setmode(GPIO.BOARD)
+class TrafficLightController:
+    def __init__(self):
+        GPIO.setwarnings(False)
+        GPIO.setmode(GPIO.BOARD)
+        self.setup_gpio()
 
-# Set the pins which will correspond to the traffic lights
-output_leds = [3, 5, 7, 8, 10, 12, 19, 21, 23, 22, 24, 26]
-GPIO.setup(output_leds, GPIO.OUT)
+    # Set constants for light delays
+    GREEN_DELAY = 5
+    YELLOW_DELAY = 3
+    RED_DELAY = 1.75
 
-def green_east_and_west():
-    GPIO.output(22, True)
-    GPIO.output(24, False)
-    GPIO.output(26, False)
+    # Dictionary to hold the mapping of (direction and color) to GPIO pins
+    OUTPUT_PIN_MAP = {
+        "north_green"  : 3,
+        "north_yellow" : 5,
+        "north_red"    : 7,
 
-    GPIO.output(19, True)
-    GPIO.output(21, False)
-    GPIO.output(23, False)
+        "south_green"  : 8,
+        "south_yellow" : 10,
+        "south_red"    : 12,
 
+        "east_green"   : 19,
+        "east_yellow"  : 21,
+        "east_red"     : 23,
 
-def yellow_east_and_west():
-    GPIO.output(22, False)
-    GPIO.output(24, True)
-    GPIO.output(26, False)
+        "west_green"   : 22,
+        "west_yellow"  : 24,
+        "west_red"     : 26,
 
-    GPIO.output(19, False)
-    GPIO.output(21, True)
-    GPIO.output(23, False)
+        "ns_LED"       : 37,
+        "ew_LED"       : 35
+    }
 
+    # Dictionary to hold the mapping of (direction and sensor) to GPIO pins
+    INP_PIN_MAP = {
+        "ns_btn" : 40,
+        "ew_btn" : 32
+    }
 
+    states = ["EW-G", "EW-Y", "EW-R", "NS-G", "NS-Y", "NS-R"]
+    state = "undefined"
 
-def red_east_and_west():
-    GPIO.output(22, False)
-    GPIO.output(24, False)
-    GPIO.output(26, True)
+    def setup_gpio(self):
+        # Initialize the GPIO pins
+        GPIO.setup(list(self.OUTPUT_PIN_MAP.values()), GPIO.OUT)
+        GPIO.setup(list(self.INP_PIN_MAP.values()), GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
 
-    GPIO.output(19, False)
-    GPIO.output(21, False)
-    GPIO.output(23, True)
+        # Attach the ISR to the buttons
+        GPIO.add_event_detect(self.INP_PIN_MAP["ns_btn"], GPIO.RISING,
+                              callback=self.button_pressed_callback, bouncetime=1000)
+        GPIO.add_event_detect(self.INP_PIN_MAP["ew_btn"], GPIO.RISING,
+                              callback=self.button_pressed_callback, bouncetime=1000)
 
+    def set_traffic_light(self, direction, color):
+        """
+        Set the traffic light for a given direction to a specific color.
 
-def green_north_and_south():
-    GPIO.output(8, True)
-    GPIO.output(10, False)
-    GPIO.output(12, False)
+        Parameters:
+        direction (str): Corresponding side. Either {north, south, east, or west}.
+        color (str): Color of light. Either {green, yellow, or red}.
+        """
+        # Turn off all the lights
+        for c in ["green", "yellow", "red"]:
+            GPIO.output(self.OUTPUT_PIN_MAP[f"{direction}_{c}"], False)
 
-    GPIO.output(3, True)
-    GPIO.output(5, False)
-    GPIO.output(7, False)
+        # Turn on the specified light
+        GPIO.output(self.OUTPUT_PIN_MAP[f"{direction}_{color}"], True)
 
-def yellow_north_and_south():
-    GPIO.output(8, False)
-    GPIO.output(10, True)
-    GPIO.output(12, False)
+    def set_state(self, state):
+        """
+        Set the state of the system based on a simple naming convention.
+        
+        State 1 (EW-G):
+                North and South - Red
+                East and West   - Green
 
-    GPIO.output(3, False)
-    GPIO.output(5, True)
-    GPIO.output(7, False)
+        State 2 (EW-Y):
+                North and South - Red
+                East and West   - Yellow
 
-def red_north_and_south():
-    GPIO.output(8, False)
-    GPIO.output(10, False)
-    GPIO.output(12, True)
+        State 3 (EW-R):
+                North and South - Red
+                East and West   - Red
 
-    GPIO.output(3, False)
-    GPIO.output(5, False)
-    GPIO.output(7, True)
+        ----------------------------------------------------------
 
-def main():
+        State 4 (NS-G):
+                North and South - Green
+                East and West   - Red
 
-    try:
+        State 5 (NS-Y):
+                North and South - Yellow
+                East and West   - Red
+
+        State 6 (NS-R):
+                North and South - Red
+                East and West   - Red
+
+        Repeat from State 1.
+
+        Parameters:
+        state (str): State of the system. 6 states. {EW-G, EW-Y, EW-R, NS-G, NS-Y, NS-R}.
+        """
+        state_mappings = {
+            "EW-G": {"east": "green", "west": "green", "north": "red", "south": "red", "delay": self.GREEN_DELAY},
+            "EW-Y": {"east": "yellow", "west": "yellow", "delay": self.YELLOW_DELAY},
+            "EW-R": {"east": "red", "west": "red", "delay": self.RED_DELAY},
+            "NS-G": {"north": "green", "south": "green", "east": "red", "west": "red", "delay": self.GREEN_DELAY},
+            "NS-Y": {"north": "yellow", "south": "yellow", "delay": self.YELLOW_DELAY},
+            "NS-R": {"north": "red", "south": "red", "delay": self.RED_DELAY},
+        }
+
+        settings = state_mappings[state]
+        for direction, color in settings.items():
+            if direction != "delay":
+                self.set_traffic_light(direction, color)
+        
+        sleep(settings["delay"])
+
+    def button_pressed_callback(self, channel):
+        """
+        The function to be called when a button is pressed.
+        Changes the mode of operation of the traffic lights.
+
+        The new state depends on the current state as well as the inp btn.
+        """
+        self.continue_schedule = False
+        print(f"\n* State when button is pressed: {self.state}")
+
+        if channel == self.INP_PIN_MAP["ns_btn"]:
+            GPIO.output(self.OUTPUT_PIN_MAP["ns_LED"], True)
+            direction = "NS"
+            sleep(0.1)
+            GPIO.output(self.OUTPUT_PIN_MAP["ns_LED"], False)
+
+        elif channel == self.INP_PIN_MAP["ew_btn"]:
+            GPIO.output(self.OUTPUT_PIN_MAP["ew_LED"], True)
+            direction = "EW"
+            sleep(0.1)
+            GPIO.output(self.OUTPUT_PIN_MAP["ew_LED"], False)
+
+        raise CarInterrupt("car detected", direction)
+
+    continue_schedule = True 
+
+    def schedule(self, start_state):
+
+        # Get the index of the starting state
+        for idx, state in enumerate(self.states):
+            if state == start_state:
+                start_index = idx
+                break
+
+        
         while True:
+            try:
+                self.state = self.states[idx]
+                print(self.state)
+                self.set_state(self.state)
 
-        ########
-        # At the start of the intersection simulation,
-	# the East and West sides will have green lights.
-	# and the North and South sides will have red lights.
-	########
+                idx = idx + 1
 
-            red_north_and_south()
-            green_east_and_west()
+                if idx >= 6:
+                    idx = 0
 
-            sleep(5)
+            except CarInterrupt as e:
+                print(e.message)
+                print(f"direction: {e.direction}")
 
-            yellow_east_and_west()
+                # Button is pressed in east/west direction
+                if e.direction == "EW":     
 
-            sleep(3)
+                    # Current state is green for east/west directions
+                    if self.state == "EW-G":
+                        idx = self.states.index("EW-G")
 
-            red_east_and_west()
+                    elif self.state == "EW-Y":
+                        pass
 
-            sleep(1.75)
+                    elif self.state == "EW-R":
+                        pass
 
-            green_north_and_south()
+                    elif self.state == "NS-G":
+                        pass
 
-            sleep(5)
+                    elif self.state == "NS-Y":
+                        pass
 
-            yellow_north_and_south()
+                    elif self.state == "NS-R":
+                        pass
 
-            sleep(3)
+                # Button is pressed in north/south direction
+                elif e.direction == "NS":
 
-            red_north_and_south()
+                    # Current state is green for east/west directions
+                    if self.state == "EW-G":
+                        idx = self.states.index("EW-G")
 
-            sleep(1.75)
+                    elif self.state == "EW-Y":
+                        pass
 
-    except KeyboardInterrupt:
-        GPIO.output(output_leds, False)
+                    elif self.state == "EW-R":
+                        pass
+
+                    elif self.state == "NS-G":
+                        pass
+
+                    elif self.state == "NS-Y":
+                        pass
+
+                    elif self.state == "NS-R":
+                        pass
+
+                self.set_state(self.states[idx])
+                continue
+
+            except KeyboardInterrupt:
+                print("\n\nExiting...")
+                GPIO.output(list(self.OUTPUT_PIN_MAP.values()), False)
+
+
+
+class CarInterrupt(Exception):
+    def __init__(self, message, direction):
+        super().__init__(message)
+        self.direction = direction
+
+
+parser = argparse.ArgumentParser(
+                    prog='4-way intersection traffic light simulator',
+                    description='Simulate the traffic lights of a 4-way intersection using a Raspberry Pi.')
+parser.add_argument("-v", "--verbose", action="store_true",
+                    help="increase output verbosity")
+parser.add_argument("change", 
+                    type=str,
+                    choices= ["schedule", "inp_sensor", "both"],
+                    help="define how lights change")
+args = parser.parse_args()
+
+
 
 if __name__ == "__main__":
-    main()
+    traffic_controller = TrafficLightController()
+
+    if args.change == "schedule":
+        print("changing lights based on pre-defined schedule")
+        traffic_controller.schedule("EW-G")
+
+    elif args.change == "inp_sensor":
+        print("changing lights based on input sensors")
+
+    elif args.change == "both":
+        print("changing lights based on schedule and input sensors")
