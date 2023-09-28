@@ -10,7 +10,6 @@ If there is a car at one of the sides, the lights will switch and allow the cars
     as long as the button is pressed down
 """
 from time import sleep
-from threading import Thread
 import argparse
 
 import RPi.GPIO as GPIO
@@ -21,6 +20,9 @@ class TrafficLightController:
         GPIO.setwarnings(False)
         GPIO.setmode(GPIO.BOARD)
         self.setup_gpio()
+
+    continue_schedule = True
+    next_state = "EW-G"
 
     # Set constants for light delays
     GREEN_DELAY = 5
@@ -121,11 +123,11 @@ class TrafficLightController:
         """
         state_mappings = {
             "EW-G": {"east": "green", "west": "green", "north": "red", "south": "red", "delay": self.GREEN_DELAY},
-            "EW-Y": {"east": "yellow", "west": "yellow", "delay": self.YELLOW_DELAY},
-            "EW-R": {"east": "red", "west": "red", "delay": self.RED_DELAY},
+            "EW-Y": {"east": "yellow", "west": "yellow", "north": "red", "south": "red", "delay": self.YELLOW_DELAY},
+            "EW-R": {"east": "red", "west": "red", "north": "red", "south": "red", "delay": self.RED_DELAY},
             "NS-G": {"north": "green", "south": "green", "east": "red", "west": "red", "delay": self.GREEN_DELAY},
-            "NS-Y": {"north": "yellow", "south": "yellow", "delay": self.YELLOW_DELAY},
-            "NS-R": {"north": "red", "south": "red", "delay": self.RED_DELAY},
+            "NS-Y": {"north": "yellow", "south": "yellow", "east": "red", "west": "red", "delay": self.YELLOW_DELAY},
+            "NS-R": {"north": "red", "south": "red", "east": "red", "west": "red", "delay": self.RED_DELAY},
         }
 
         settings = state_mappings[state]
@@ -145,32 +147,71 @@ class TrafficLightController:
         self.continue_schedule = False
         print(f"\n* State when button is pressed: {self.state}")
 
-        if channel == self.INP_PIN_MAP["ns_btn"]:
+        if channel == self.INP_PIN_MAP["ew_btn"]:
+            GPIO.output(self.OUTPUT_PIN_MAP["ew_LED"], True)
+            # Current state is green for east/west directions
+            if self.state == "EW-G":
+                self.next_state = "EW-G"
+
+            elif self.state == "EW-Y":
+                self.next_state = "NS-R"
+
+            elif self.state == "EW-R":
+                self.next_state = "NS-R"
+
+            elif self.state == "NS-G":
+                self.next_state = "NS-Y"
+
+            elif self.state == "NS-Y":
+                self.next_state = "NS-R"
+
+            elif self.state == "NS-R":
+                pass
+
+            sleep(0.1)
+            GPIO.output(self.OUTPUT_PIN_MAP["ew_LED"], False)
+        
+        elif channel == self.INP_PIN_MAP["ns_btn"]:
             GPIO.output(self.OUTPUT_PIN_MAP["ns_LED"], True)
-            direction = "NS"
+
+            # Current state is green for east/west directions
+            if self.state == "EW-G":
+                self.next_state = "EW-Y"
+
+            elif self.state == "EW-Y":
+                self.next_state = "EW-Y"
+
+            elif self.state == "EW-R":
+                pass
+
+            elif self.state == "NS-G":
+                self.next_state = "NS-G"
+
+            elif self.state == "NS-Y":
+                self.next_state = "EW-R"
+
+            elif self.state == "NS-R":
+                self.next_state = "EW-R"
+
             sleep(0.1)
             GPIO.output(self.OUTPUT_PIN_MAP["ns_LED"], False)
 
-        elif channel == self.INP_PIN_MAP["ew_btn"]:
-            GPIO.output(self.OUTPUT_PIN_MAP["ew_LED"], True)
-            direction = "EW"
-            sleep(0.1)
-            GPIO.output(self.OUTPUT_PIN_MAP["ew_LED"], False)
+        print(f"* Next state: {self.next_state}")
 
-        raise CarInterrupt("car detected", direction)
+        self.continue_schedule = True 
 
-    continue_schedule = True 
+    def schedule(self):
 
-    def schedule(self, start_state):
+        while self.continue_schedule:
 
-        # Get the index of the starting state
-        for idx, state in enumerate(self.states):
-            if state == start_state:
-                start_index = idx
-                break
+            if self.next_state is not None:
+                current_state = self.next_state
+                # Get the index of the starting state
+                for idx, state in enumerate(self.states):
+                    if state == current_state:
+                        break   # holds value of idx when state matches
+                self.next_state = None
 
-        
-        while True:
             try:
                 self.state = self.states[idx]
                 print(self.state)
@@ -181,67 +222,10 @@ class TrafficLightController:
                 if idx >= 6:
                     idx = 0
 
-            except CarInterrupt as e:
-                print(e.message)
-                print(f"direction: {e.direction}")
-
-                # Button is pressed in east/west direction
-                if e.direction == "EW":     
-
-                    # Current state is green for east/west directions
-                    if self.state == "EW-G":
-                        idx = self.states.index("EW-G")
-
-                    elif self.state == "EW-Y":
-                        pass
-
-                    elif self.state == "EW-R":
-                        pass
-
-                    elif self.state == "NS-G":
-                        pass
-
-                    elif self.state == "NS-Y":
-                        pass
-
-                    elif self.state == "NS-R":
-                        pass
-
-                # Button is pressed in north/south direction
-                elif e.direction == "NS":
-
-                    # Current state is green for east/west directions
-                    if self.state == "EW-G":
-                        idx = self.states.index("EW-G")
-
-                    elif self.state == "EW-Y":
-                        pass
-
-                    elif self.state == "EW-R":
-                        pass
-
-                    elif self.state == "NS-G":
-                        pass
-
-                    elif self.state == "NS-Y":
-                        pass
-
-                    elif self.state == "NS-R":
-                        pass
-
-                self.set_state(self.states[idx])
-                continue
-
             except KeyboardInterrupt:
                 print("\n\nExiting...")
-                GPIO.output(list(self.OUTPUT_PIN_MAP.values()), False)
-
-
-
-class CarInterrupt(Exception):
-    def __init__(self, message, direction):
-        super().__init__(message)
-        self.direction = direction
+                self.continue_schedule = False
+                GPIO.cleanup()
 
 
 parser = argparse.ArgumentParser(
@@ -262,7 +246,7 @@ if __name__ == "__main__":
 
     if args.change == "schedule":
         print("changing lights based on pre-defined schedule")
-        traffic_controller.schedule("EW-G")
+        traffic_controller.schedule()
 
     elif args.change == "inp_sensor":
         print("changing lights based on input sensors")
