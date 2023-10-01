@@ -2,7 +2,7 @@
 
 ## Description
 
-This project aims to simulate the lights of a 4-way intersection using a Raspberry Pi, LEDs, and buttons. Built using Python and utilizing the RPi.GPIO library for hardware interface. The lights switch states according to a combination of a  predefined schedule and button presses.
+This project aims to simulate the lights of a 4-way intersection using a Raspberry Pi, LEDs, and buttons. Built using Python and utilizing the RPi.GPIO library for hardware interface. The lights switch states according to a combination of a  predefined schedule and button presses. For a short demo, check it out ['here'](https://youtu.be/hJXf-ZlD5Ss)
 
 
 ## Features
@@ -53,7 +53,7 @@ This project aims to simulate the lights of a 4-way intersection using a Raspber
 5. It's also worth noting that I used both power rails. When both buttons were attached to one power rail, the callback function associated with the buttons was reading inputs from both channels.
 6. Make sure to connect the ground (GND) correctly.
 
-Refer to the [`hardware_diagram.png`](https://github.com/ZRay07/traffic-light-sim/blob/main/hardware_diagram.JPG) for a complete setup diagram.
+Refer to the [`hardware_diagram.png`](https://github.com/ZRay07/traffic-light-sim/blob/main/docs/hardware_diagram.png) for a complete setup diagram.
 
 ## Usage
 
