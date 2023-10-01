@@ -35,17 +35,17 @@ class TrafficLightController:
         "north_yellow" : 5,
         "north_red"    : 7,
 
-        "south_green"  : 8,
-        "south_yellow" : 10,
-        "south_red"    : 12,
+        "south_green"  : 22,
+        "south_yellow" : 24,
+        "south_red"    : 26,
 
         "east_green"   : 19,
         "east_yellow"  : 21,
         "east_red"     : 23,
 
-        "west_green"   : 22,
-        "west_yellow"  : 24,
-        "west_red"     : 26,
+        "west_green"   : 8,
+        "west_yellow"  : 10,
+        "west_red"     : 12,
 
         "ns_LED"       : 37,
         "ew_LED"       : 35
